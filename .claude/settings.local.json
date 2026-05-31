@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Start-Process \"c:\\\\Users\\\\user\\\\Dropbox\\\\WeightMonitor\\\\weight-monitor.html\")",
+      "PowerShell(Start-Process \"c:\\\\Users\\\\user\\\\Dropbox\\\\WeightMonitor\\\\weight-monitor.html\")",
+      "Bash(npx playwright *)",
+      "Bash(npm list *)",
+      "Read(//usr/lib/**)",
+      "Read(//c/Users/user/AppData/Roaming/npm/node_modules//**)",
+      "Bash(find /c/Users/user -name \"playwright\" -type d 2>/dev/null | head -10)",
+      "Read(//c/Users/user/**)",
+      "Bash(mkdir -p /tmp/pw_test)",
+      "Read(//tmp/**)",
+      "Bash(npm init *)",
+      "Bash(npm install *)",
+      "Bash(node verify.mjs)",
+      "PowerShell(Rename-Item \"c:\\\\Users\\\\user\\\\Dropbox\\\\WeightMonitor\\\\weight-monitor.html\" \"BMIapp.html\")",
+      "PowerShell(Rename-Item \"c:\\\\Users\\\\user\\\\Dropbox\\\\WeightMonitor\" \"BMIapp\")",
+      "PowerShell(cmd /c rename \"c:\\\\Users\\\\user\\\\Dropbox\\\\WeightMonitor\" \"BMIapp\")",
+      "Bash(gh auth *)",
+      "PowerShell(gh auth status 2>&1)"
+    ]
+  }
+}
