@@ -949,7 +949,7 @@ function checkMilestone(currentWeight) {
     console.log('[Milestone] called — records.length:', records.length, '| currentWeight:', currentWeight);
     if (records.length < 2) { console.log('[Milestone] skip: only 1 record (no baseline yet)'); return; }
 
-    const chrono = [...records].sort((a, b) => a.dt.localeCompare(b.dt));
+    const chrono = [...records].sort((a, b) => a.dt.localeCompare(b.dt) || a.id - b.id);
     const firstRecord = chrono[0];
     const loss = +(firstRecord.weight - currentWeight).toFixed(1);
     console.log('[Milestone] firstRecord:', firstRecord.dt, firstRecord.weight, '| loss:', loss);
