@@ -946,20 +946,27 @@ function getMilestones() {
 }
 
 function checkMilestone(currentWeight) {
-    if (records.length < 2) return;
+    console.log('[Milestone] called — records.length:', records.length, '| currentWeight:', currentWeight);
+    if (records.length < 2) { console.log('[Milestone] skip: only 1 record (no baseline yet)'); return; }
+
     const chrono = [...records].sort((a, b) => a.dt.localeCompare(b.dt));
-    const loss = +(chrono[0].weight - currentWeight).toFixed(1);
-    if (loss <= 0) return;
+    const firstRecord = chrono[0];
+    const loss = +(firstRecord.weight - currentWeight).toFixed(1);
+    console.log('[Milestone] firstRecord:', firstRecord.dt, firstRecord.weight, '| loss:', loss);
+    if (loss <= 0) { console.log('[Milestone] skip: no weight loss'); return; }
 
     const celebrated = JSON.parse(localStorage.getItem(LS_MILESTONES) || '[]');
-    const hit = getMilestones()
-        .filter(m => loss >= m && !celebrated.includes(m))
-        .sort((a, b) => b - a)[0];
+    const eligible   = getMilestones().filter(m => loss >= m && !celebrated.includes(m));
+    const hit        = eligible.sort((a, b) => b - a)[0];
+    console.log('[Milestone] celebrated:', celebrated, '| eligible:', eligible, '| hit:', hit);
 
     if (hit !== undefined) {
         celebrated.push(hit);
         localStorage.setItem(LS_MILESTONES, JSON.stringify(celebrated));
+        console.log('[Milestone] ✅ showing modal for', hit, 'kg');
         setTimeout(() => showMilestoneModal(hit), 400);
+    } else {
+        console.log('[Milestone] no new milestone crossed');
     }
 }
 
