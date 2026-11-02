@@ -1321,8 +1321,6 @@ function sendWhatsApp() {
     if (records.length === 0) { toast('אין נתונים לשליחה', 'err'); return; }
 
     const sorted = [...records].sort((a,b) => b.dt.localeCompare(a.dt));
-    const avgW   = (records.reduce((s,r) => s+r.weight, 0) / records.length).toFixed(1);
-    const avgBMI = (records.reduce((s,r) => s+r.bmi,    0) / records.length).toFixed(1);
 
     let msg = `מעקב משקל\n`;
     if (user.name) msg += `שם: ${user.name}\n`;
@@ -1336,7 +1334,21 @@ function sendWhatsApp() {
         msg += `${day}/${m}/${y.slice(2)}  ${t}  ${r.weight.toFixed(1)}   ${r.bmi}\n`;
     });
     msg += `─────────────────────────\n`;
-    msg += `ממוצע:    ${avgW}  ${avgBMI}`;
+    if (sorted.length > 1) {
+        const first = sorted[sorted.length - 1], last = sorted[0];
+        const diff  = last.weight - first.weight;
+        const sign  = diff > 0 ? '+' : diff < 0 ? '−' : '';
+        const days  = Math.round((new Date(last.dt) - new Date(first.dt)) / 86400000);
+        const months = days / 30.44;
+        const span  = months >= 1
+            ? `${months.toFixed(1).replace(/\.0$/, '')} חודשים`
+            : (days === 1 ? 'יום אחד' : `${days} ימים`);
+        msg += `שינוי כולל: ${sign}${Math.abs(diff).toFixed(1)} ק"ג`;
+        msg += ` (מ-${first.weight.toFixed(1)} ל-${last.weight.toFixed(1)})\n`;
+        msg += `במשך: ${span} (מהמדידה הראשונה עד האחרונה)`;
+    } else {
+        msg += `מדידה אחת בלבד`;
+    }
 
     const url = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
