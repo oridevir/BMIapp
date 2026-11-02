@@ -1346,6 +1346,11 @@ function sendWhatsApp() {
         msg += `שינוי כולל: ${sign}${Math.abs(diff).toFixed(1)} ק"ג`;
         msg += ` (מ-${first.weight.toFixed(1)} ל-${last.weight.toFixed(1)})\n`;
         msg += `במשך: ${span}`;
+        if (months >= 1) {
+            const perMonth = diff / months;
+            const pSign = perMonth > 0.05 ? '+' : perMonth < -0.05 ? '−' : '';
+            msg += `\nשינוי ממוצע בחודש: ${pSign}${Math.abs(perMonth).toFixed(1)} ק"ג`;
+        }
     } else {
         msg += `מדידה אחת בלבד`;
     }
