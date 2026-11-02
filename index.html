@@ -1345,7 +1345,7 @@ function sendWhatsApp() {
             : (days === 1 ? 'יום אחד' : `${days} ימים`);
         msg += `שינוי כולל: ${sign}${Math.abs(diff).toFixed(1)} ק"ג`;
         msg += ` (מ-${first.weight.toFixed(1)} ל-${last.weight.toFixed(1)})\n`;
-        msg += `במשך: ${span} (מהמדידה הראשונה עד האחרונה)`;
+        msg += `במשך: ${span}`;
     } else {
         msg += `מדידה אחת בלבד`;
     }
