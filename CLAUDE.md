@@ -50,3 +50,6 @@ wm_milestones_v1  = [ 3, 5, ... ]   // ציוני דרך שכבר נחגגו
 
 - **לוגו**: `https://drdevir.com/Images/logo.jpg` (fallback 🏥)
 - **וואטסאפ רופא**: `972555588571` (`WA_NUMBER`)
+
+## קידום בגוגל (2026-11-08)
+בראש `index.html`: תיאור לעמוד, canonical ו-Open Graph (תמונה: `icons/icon-512.png`). בשורש: `robots.txt` ו-`sitemap.xml`. שינוי בכותרת או בתיאור — לעדכן גם את תגיות `og:`.
