@@ -1366,7 +1366,12 @@ function renderChartBMI(data) {
             plugins: {
                 legend: {
                     display: true,
-                    labels: { font: { size: 11 }, boxWidth: 24 }
+                    labels: {
+                        font: { size: 11 }, usePointStyle: true, pointStyle: 'line', pointStyleWidth: 28,
+                        /* מקרא בצורת קו (רציף/מקווקו כמו בגרף), לא ריבוע */
+                        generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart)
+                            .map(it => ({ ...it, lineDash: chart.data.datasets[it.datasetIndex].borderDash || [] }))
+                    }
                 }
             },
             scales: {
