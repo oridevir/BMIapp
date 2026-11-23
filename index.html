@@ -1270,13 +1270,20 @@ async function deleteRecord(id) {
 }
 
 /* ─── CHARTS ─── */
-/* גודל נקודות בגרף לפי מספר המדידות — כשיש הרבה, הנקודות נדבקות זו לזו,
-   ולכן מקטינים אותן, ומעל 30 מדידות מציגים קו בלבד (נגיעה עדיין מציגה ערך) */
-function pointSize(n) {
-    if (n <= 10) return 5;
-    if (n <= 20) return 4;
-    if (n <= 30) return 3;
-    return 0;
+/* גודל נקודות בגרף לפי הצפיפות שלהן על המסך: לוקחים מרחק אופייני בין מדידות סמוכות
+   (הרבע הצפוף ביותר — כדי שתקופה של שקילות תכופות לא תהפוך לגוש), ומתאימים אליו את הנקודה.
+   צפוף מדי, או קו מוחלק (מעל 30 מדידות) — קו בלבד; נגיעה עדיין מציגה ערך */
+function pointSize(data, canvas) {
+    if (isSmoothed(data.length)) return 0;
+    if (data.length < 2) return 5;
+    const xs = data.map(r => dayNum(r.dt));
+    const span = xs[xs.length - 1] - xs[0];
+    const plotW = (canvas.clientWidth || 300) - 45;               // בניכוי מספרי הציר האנכי
+    if (span < 1 || plotW <= 0) return 5;
+    const gaps = xs.slice(1).map((x, i) => (x - xs[i]) * plotW / span).sort((a, b) => a - b);
+    const gap = gaps[Math.floor(gaps.length / 4)];                // מרחק אופייני בפיקסלים
+    const r = Math.min(5, gap * 0.6);
+    return r < 1.5 ? 0 : +r.toFixed(1);
 }
 /* מעל 30 מדידות הקו מוחלק: כל נקודה = ממוצע משוקלל של המדידות הסמוכות לה בזמן
    (מדידה קרובה בזמן שוקלת יותר — "פעמון" ברוחב ~2% מכל התקופה, לפחות 4 ימים),
@@ -1364,7 +1371,7 @@ function renderChartWeight(data) {
                 borderColor: '#0F8F86',
                 backgroundColor: 'rgba(15,143,134,.12)',
                 ...lineStyle(data.length),
-                pointRadius: pointSize(data.length),
+                pointRadius: pointSize(data, ctx.canvas),
                 pointHoverRadius: 5,
                 pointBackgroundColor: '#0F8F86',
                 clip: 8,   // שנקודה בקצה הגרף לא תיחתך לחצי
@@ -1409,7 +1416,7 @@ function renderChartBMI(data) {
                     borderColor: '#0A6E67',
                     backgroundColor: 'rgba(10,110,103,.10)',
                     ...lineStyle(data.length),
-                    pointRadius: pointSize(data.length),
+                    pointRadius: pointSize(data, ctx.canvas),
                     pointHoverRadius: 5,
                     pointBackgroundColor: '#0A6E67',
                     clip: 8,
