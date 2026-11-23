@@ -1270,6 +1270,63 @@ async function deleteRecord(id) {
 }
 
 /* ─── CHARTS ─── */
+/* גודל נקודות בגרף לפי מספר המדידות — כשיש הרבה, הנקודות נדבקות זו לזו,
+   ולכן מקטינים אותן, ומעל 30 מדידות מציגים קו בלבד (נגיעה עדיין מציגה ערך) */
+function pointSize(n) {
+    if (n <= 10) return 5;
+    if (n <= 20) return 4;
+    if (n <= 30) return 3;
+    return 0;
+}
+/* מעל 30 מדידות הקו מוחלק: כל נקודה = ממוצע משוקלל של המדידות הסמוכות לה בזמן
+   (מדידה קרובה בזמן שוקלת יותר — "פעמון" ברוחב ~2% מכל התקופה, לפחות 4 ימים),
+   כדי לקבל קו רציף בלי קפיצות. הערך המדויק מוצג בנגיעה ובטבלה */
+const SMOOTH_MIN_POINTS = 30;
+function isSmoothed(n) { return n > SMOOTH_MIN_POINTS; }
+function smoothLine(data, vals) {
+    if (!isSmoothed(vals.length)) return vals;
+    const xs = data.map(r => dayNum(r.dt));
+    const sigma = Math.max(4, (xs[xs.length - 1] - xs[0]) / 50);
+    return xs.map(x0 => {
+        let sw = 0, sv = 0;
+        xs.forEach((x, j) => {
+            const w = Math.exp(-0.5 * ((x - x0) / sigma) ** 2);
+            sw += w; sv += w * vals[j];
+        });
+        return +(sv / sw).toFixed(2);
+    });
+}
+/* קו דק ומעוגל בלי "שיניים" כשהקו מוחלק; אחרת — העיצוב הרגיל */
+function lineStyle(n) {
+    return isSmoothed(n)
+        ? { borderWidth: 2, cubicInterpolationMode: 'monotone' }
+        : { borderWidth: 2.5, tension: 0.35 };
+}
+const SMOOTH_NOTE = 'הקו מוחלק — לערך המדויק גע בגרף או ראה בטבלה';
+
+/* ציר זמן אמיתי: מיקום כל מדידה לפי התאריך שלה (בימים), כך שהמרחק בין נקודות
+   משקף את הזמן שעבר — ולא מרחקים שווים לפי הסדר */
+const dayNum = dt => Date.parse(dt) / 864e5;
+const pad2 = n => String(n).padStart(2, '0');
+function dayLabel(v) {
+    const d = new Date(v * 864e5);
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`;
+}
+/* מצמיד ערכים לתאריכי המדידות — לקו הראשי ולקווי הייחוס, כדי שנגיעה תמצא אותה מדידה בכולם */
+const onDates = (data, ys) => data.map((r, i) => ({ x: dayNum(r.dt), y: ys[i] }));
+function timeAxis(data) {
+    let min = dayNum(data[0].dt), max = dayNum(data[data.length - 1].dt);
+    if (max - min < 1) { min -= 1; max += 1; }   // מדידה אחת (או כולן באותו יום) — שהנקודה לא תידבק לשוליים
+    const n = Math.min(6, Math.floor(max - min) + 1);   // עד 6 תאריכים, במרווחים שווים, בלי כפילויות
+    return { type: 'linear', min, max,
+             afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: min + (max - min) * i / (n - 1) })); },
+             ticks: { font: { size: 11 }, maxRotation: 45, callback: dayLabel } };
+}
+const tooltipDate = data => items => formatDate(data[items[0].dataIndex].dt.split('T')[0]);
+
+/* נגיעה בכל גובה מעל תאריך מציגה את המדידה שלו — חשוב כשאין נקודות לגעת בהן */
+const TOUCH_INTERACTION = { mode: 'index', intersect: false };
+
 function renderChartWeight(data) {
     const ctx = document.getElementById('chart-weight').getContext('2d');
     if (chartWeight) chartWeight.destroy();
@@ -1281,43 +1338,49 @@ function renderChartWeight(data) {
     const gap = Math.max(0, wMin - hr.max, hr.min - wMax);
     const showBand = gap <= BAND_NEAR_KG;
     const rangeTxt = `<strong>בין ${hr.min.toFixed(1)} ל-${hr.max.toFixed(1)} ק"ג</strong>`;
-    document.getElementById('healthy-range-note').innerHTML = showBand
+    document.getElementById('healthy-range-note').innerHTML = (showBand
         ? `<span class="swatch" aria-hidden="true"></span>הרצועה = טווח המשקל התקין לגובה שלך<br>${rangeTxt}`
-        : `טווח המשקל התקין לגובה שלך<br>${rangeTxt}`;
+        : `טווח המשקל התקין לגובה שלך<br>${rangeTxt}`)
+        + (isSmoothed(data.length) ? `<br>${SMOOTH_NOTE}` : '');
     const band = !showBand ? [] : [
             {   // רצועת טווח תקין — גבול תחתון
-                data: Array(data.length).fill(+hr.min.toFixed(1)),
+                data: onDates(data, Array(data.length).fill(+hr.min.toFixed(1))),
                 borderColor: 'rgba(15,143,134,.45)', borderWidth: 1, borderDash: [4,4],
-                pointRadius: 0, pointHitRadius: 0, fill: false
+                pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0, fill: false
             },
             {   // גבול עליון, ממולא עד התחתון
-                data: Array(data.length).fill(+hr.max.toFixed(1)),
+                data: onDates(data, Array(data.length).fill(+hr.max.toFixed(1))),
                 borderColor: 'rgba(15,143,134,.45)', borderWidth: 1, borderDash: [4,4],
                 backgroundColor: 'rgba(15,143,134,.16)',
-                pointRadius: 0, pointHitRadius: 0, fill: '-1'
+                pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0, fill: '-1'
             }];
     chartWeight = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(r => { const [d] = r.dt.split('T'); return formatDate(d); }),
             datasets: [...band,
             {
                 label: 'משקל (ק"ג)',
-                data: data.map(r => r.weight),
+                data: onDates(data, smoothLine(data, ws)),
                 borderColor: '#0F8F86',
                 backgroundColor: 'rgba(15,143,134,.12)',
-                borderWidth: 2.5,
-                pointRadius: 5,
+                ...lineStyle(data.length),
+                pointRadius: pointSize(data.length),
+                pointHoverRadius: 5,
                 pointBackgroundColor: '#0F8F86',
-                tension: 0.35,
+                clip: 8,   // שנקודה בקצה הגרף לא תיחתך לחצי
                 fill: false
             }]
         },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { filter: i => i.dataset.label === 'משקל (ק"ג)' } },
+            interaction: TOUCH_INTERACTION,
+            plugins: { legend: { display: false }, tooltip: {
+                filter: i => i.dataset.label === 'משקל (ק"ג)',
+                callbacks: { title: tooltipDate(data),
+                             label: c => `משקל (ק"ג): ${data[c.dataIndex].weight}` }   // הערך שנמדד, לא המוחלק
+            } },
             scales: {
-                x: { ticks: { font: { size: 11 }, maxRotation: 45 } },
+                x: timeAxis(data),
                 y: { ticks: { font: { size: 11 } },
                      suggestedMin: Math.floor((showBand ? Math.min(hr.min, wMin) : wMin) - 2),
                      suggestedMax: Math.ceil((showBand ? Math.max(hr.max, wMax) : wMax) + 2) }
@@ -1339,33 +1402,40 @@ function renderChartBMI(data) {
     chartBMI = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(r => { const [d] = r.dt.split('T'); return formatDate(d); }),
             datasets: [
                 {
                     label: 'BMI',
-                    data: data.map(r => r.bmi),
+                    data: onDates(data, smoothLine(data, data.map(r => r.bmi))),
                     borderColor: '#0A6E67',
                     backgroundColor: 'rgba(10,110,103,.10)',
-                    borderWidth: 2.5,
-                    pointRadius: 5,
+                    ...lineStyle(data.length),
+                    pointRadius: pointSize(data.length),
+                    pointHoverRadius: 5,
                     pointBackgroundColor: '#0A6E67',
-                    tension: 0.35,
+                    clip: 8,
                     fill: true
                 },
                 ...refLines.map(ref => ({
                     label: `BMI ${ref.label}`,
-                    data: Array(data.length).fill(ref.value),
+                    data: onDates(data, Array(data.length).fill(ref.value)),
                     borderColor: ref.color,
                     borderWidth: 1.5,
                     borderDash: [6,4],
                     pointRadius: 0,
+                    pointHoverRadius: 0,
                     fill: false
                 }))
             ]
         },
         options: {
             responsive: true, maintainAspectRatio: false,
+            interaction: TOUCH_INTERACTION,
             plugins: {
+                tooltip: {
+                    filter: i => i.dataset.label === 'BMI',
+                    callbacks: { title: tooltipDate(data),
+                                 label: c => `BMI: ${data[c.dataIndex].bmi}` }   // הערך שנמדד, לא המוחלק
+                },
                 legend: {
                     display: true,
                     labels: {
@@ -1377,7 +1447,7 @@ function renderChartBMI(data) {
                 }
             },
             scales: {
-                x: { ticks: { font: { size: 11 }, maxRotation: 45 } },
+                x: timeAxis(data),
                 y: { ticks: { font: { size: 11 } } }
             }
         }
