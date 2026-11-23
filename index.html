@@ -1334,6 +1334,20 @@ const tooltipDate = data => items => formatDate(data[items[0].dataIndex].dt.spli
 /* נגיעה בכל גובה מעל תאריך מציגה את המדידה שלו — חשוב כשאין נקודות לגעת בהן */
 const TOUCH_INTERACTION = { mode: 'index', intersect: false };
 
+/* התווית נעלמת מעצמה 3 שניות אחרי הנגיעה האחרונה, בדהייה הדרגתית
+   (בלי דהייה למי שביקש במכשיר פחות תנועה) */
+const TOOLTIP_HIDE_MS = 3000;
+const REDUCE_MOTION = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function autoHideTooltip(e, els, chart) {
+    clearTimeout(chart._tipTimer);
+    chart._tipTimer = setTimeout(() => {
+        chart.setActiveElements([]);
+        chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+        chart.update(REDUCE_MOTION ? 'none' : undefined);
+    }, TOOLTIP_HIDE_MS);
+}
+const TOOLTIP_FADE = { animation: { duration: REDUCE_MOTION ? 0 : 700 } };
+
 function renderChartWeight(data) {
     const ctx = document.getElementById('chart-weight').getContext('2d');
     if (chartWeight) chartWeight.destroy();
@@ -1381,7 +1395,8 @@ function renderChartWeight(data) {
         options: {
             responsive: true, maintainAspectRatio: false,
             interaction: TOUCH_INTERACTION,
-            plugins: { legend: { display: false }, tooltip: {
+            onHover: autoHideTooltip,
+            plugins: { legend: { display: false }, tooltip: { ...TOOLTIP_FADE,
                 filter: i => i.dataset.label === 'משקל (ק"ג)',
                 callbacks: { title: tooltipDate(data),
                              label: c => `משקל (ק"ג): ${data[c.dataIndex].weight}` }   // הערך שנמדד, לא המוחלק
@@ -1437,8 +1452,9 @@ function renderChartBMI(data) {
         options: {
             responsive: true, maintainAspectRatio: false,
             interaction: TOUCH_INTERACTION,
+            onHover: autoHideTooltip,
             plugins: {
-                tooltip: {
+                tooltip: { ...TOOLTIP_FADE,
                     filter: i => i.dataset.label === 'BMI',
                     callbacks: { title: tooltipDate(data),
                                  label: c => `BMI: ${data[c.dataIndex].bmi}` }   // הערך שנמדד, לא המוחלק
