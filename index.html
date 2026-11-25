@@ -754,6 +754,23 @@ input::placeholder { color: var(--text2) !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
+/* ═══ Range buttons above the charts (month / 3 months / year / all) ═══ */
+.range-bar { position: relative; display: flex; justify-content: space-between; gap: 2px; margin: 0 0 12px; padding: 4px;
+  border-radius: 999px; background: rgba(255,255,255,.85); border: 1px solid rgba(15,143,134,.25); }
+.range-bar[hidden] { display: none; }
+.range-slider { position: absolute; top: 4px; bottom: 4px; left: 4px; width: 0; border-radius: 999px; background: #0C7E76;
+  box-shadow: 0 4px 12px -4px rgba(12,126,118,.6); transition: left .35s cubic-bezier(.4,0,.2,1), width .35s cubic-bezier(.4,0,.2,1); }
+.range-btn { position: relative; z-index: 1; flex: 1 1 auto; font: inherit; font-size: 16px; font-weight: 700; padding: 8px 6px; min-height: 44px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; white-space: nowrap; transition: color .2s .15s; }
+.range-btn[aria-pressed="true"] { color: #fff; }
+.range-btn:focus-visible { outline: 3px solid #0C7E76; outline-offset: 2px; }
+#hist-content .chart-wrap { overflow: hidden; }
+.chart-wrap.zoom-in  canvas { animation: chart-zoom-in  .45s cubic-bezier(.2,.8,.2,1) both; }
+.chart-wrap.zoom-out canvas { animation: chart-zoom-out .45s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes chart-zoom-in  { from { opacity: 0; transform: scale(.88); } to { opacity: 1; transform: none; } }
+@keyframes chart-zoom-out { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
+@media (max-width: 360px) { .range-btn { font-size: 14px; padding: 8px 3px; } }   /* טלפונים צרים — שכל חמשת הכפתורים ייכנסו
+
 /* ═══ About window (click on the clinic logo) ═══ */
 .logo-info { position: relative; display: inline-block; line-height: 0; cursor: pointer; border-radius: 50%; }
 .logo-info::after { content: "i"; position: absolute; bottom: 0; left: 0; width: 18px; height: 18px; border-radius: 50%;
@@ -974,6 +991,9 @@ input::placeholder { color: var(--text2) !important; }
     </div>
 
     <div id="hist-content">
+        <!-- טווח זמן לגרפים — הכפתורים נבנים ב-renderRangeBar() -->
+        <div class="range-bar" id="range-bar" role="group" aria-label="טווח הזמן בגרפים" hidden></div>
+
         <!-- Chart 1 — Weight -->
         <div class="card chart-card" id="chart-weight-card">
             <div class="chart-title">📈 משקל לאורך זמן (ק"ג)</div>
@@ -1059,6 +1079,7 @@ input::placeholder { color: var(--text2) !important; }
 const LS_USER       = 'wm_user_v1';
 const LS_DATA       = 'wm_data_v1';
 const LS_MILESTONES = 'wm_milestones_v1';
+const LS_RANGE = 'wm_range_v1';   // טווח הזמן שנבחר לגרפים (ימים, 0 = הכל) — העדפת תצוגה בלבד
 const WA_NUMBER = '972555588571';
 
 /* ─── STORAGE — localStorage, falling back to sessionStorage (iPhone WhatsApp blocks localStorage) ─── */
@@ -1247,9 +1268,81 @@ function renderHistory() {
     }).join('');
 
 
-    // Charts
-    renderChartWeight(chrono);
-    renderChartBMI(chrono);
+    // Charts — רק בטווח הזמן שנבחר (הטבלה מציגה תמיד את הכל)
+    const shown = inRange(chrono);
+    renderChartWeight(shown);
+    renderChartBMI(shown);
+}
+
+/* ─── טווח זמן לגרפים ─── */
+const RANGES = [ { days: 30, label: 'חודש' }, { days: 90, label: '3 חודשים' }, { days: 182, label: '6 חודשים' },
+                 { days: 365, label: 'שנה' }, { days: 0, label: 'הכל' } ];
+/* בטווח של עד חצי שנה לא מציירים את רצועת המשקל התקין — שהציר יתמקד במשקלי המטופל
+   ושינויים יראו בבירור (הטווח התקין נשאר כתוב מתחת לגרף) */
+const BAND_MAX_RANGE = 182;
+let chartRange = 0;
+try { chartRange = +(appStore.getItem(LS_RANGE) || 0); } catch (e) {}
+
+/* מסנן לפי התקופה שלפני המדידה האחרונה (ולא לפני היום — שמטופל שהפסיק להישקל לא יראה גרף ריק) */
+function inRange(chrono) {
+    const last = dayNum(chrono[chrono.length - 1].dt);
+    const span = last - dayNum(chrono[0].dt);
+    renderRangeBar(span);
+    if (!chartRange || chartRange >= span) return chrono;
+    return chrono.filter(r => dayNum(r.dt) >= last - chartRange);
+}
+
+/* מציג רק טווחים קצרים מכל התקופה של המטופל; אם אין כאלה — אין כפתורים בכלל */
+function renderRangeBar(span) {
+    const bar = document.getElementById('range-bar');
+    const opts = RANGES.filter(r => r.days === 0 || r.days < span);
+    if (opts.length < 2) { bar.hidden = true; return; }
+    if (!opts.some(r => r.days === chartRange)) chartRange = 0;
+    bar.hidden = false;
+    // בונים מחדש רק כשרשימת הכפתורים משתנה — כדי שהסליידר יחליק ולא ייבנה מאפס
+    const key = opts.map(r => r.days).join(',');
+    if (bar.dataset.key !== key) {
+        bar.dataset.key = key;
+        bar.innerHTML = '<span class="range-slider" aria-hidden="true"></span>' + opts.map(r =>
+            `<button type="button" class="range-btn" data-days="${r.days}" onclick="setRange(${r.days})">${r.label}</button>`
+        ).join('');
+    }
+    markRange();
+}
+
+/* מסמן את הכפתור הנבחר ומזיז אליו את הסליידר */
+function markRange() {
+    const bar = document.getElementById('range-bar');
+    let active = null;
+    bar.querySelectorAll('.range-btn').forEach(b => {
+        const on = +b.dataset.days === chartRange;
+        b.setAttribute('aria-pressed', on);
+        if (on) active = b;
+    });
+    const sl = bar.querySelector('.range-slider');
+    if (active && sl) { sl.style.left = active.offsetLeft + 'px'; sl.style.width = active.offsetWidth + 'px'; }
+}
+window.addEventListener('resize', () => { if (!document.getElementById('range-bar').hidden) markRange(); });
+
+/* מעבר בין טווחים: הגרפים "מתקרבים" (טווח קצר יותר) או "מתרחקים" (טווח ארוך יותר) —
+   הגרף החדש מופיע בדהייה, מוגדל מעט או מוקטן מעט, ומתייצב לגודלו */
+let rangeZoom = null;
+const rangeLen = d => d || Infinity;   // 0 = הכל = הכי ארוך
+function setRange(days) {
+    if (days === chartRange) return;
+    rangeZoom = rangeLen(days) < rangeLen(chartRange) ? 'zoom-in' : 'zoom-out';
+    chartRange = days;
+    try { appStore.setItem(LS_RANGE, String(days)); } catch (e) {}
+    markRange();                              // הסליידר מתחיל לנוע מיד
+    requestAnimationFrame(() => {             // והגרפים מתעדכנים בפריים הבא
+        renderHistory();
+        document.querySelectorAll('#hist-content .chart-wrap').forEach(w => {
+            w.classList.remove('zoom-in', 'zoom-out');
+            void w.offsetWidth;               // מאפס את ההנפשה כדי שתרוץ שוב
+            w.classList.add(rangeZoom);
+        });
+        rangeZoom = null;
+    });
 }
 
 function formatDate(d) {
@@ -1357,7 +1450,7 @@ function renderChartWeight(data) {
     // רצועת הטווח התקין מוצגת רק כשהמטופל קרוב אליה (עד BAND_NEAR_KG ק"ג),
     // כדי שאצל מי שרחוק ממנה הגרף לא יימתח וישטיח את ההתקדמות
     const gap = Math.max(0, wMin - hr.max, hr.min - wMax);
-    const showBand = gap <= BAND_NEAR_KG;
+    const showBand = gap <= BAND_NEAR_KG && !(chartRange && chartRange <= BAND_MAX_RANGE);
     const rangeTxt = `<strong>בין ${hr.min.toFixed(1)} ל-${hr.max.toFixed(1)} ק"ג</strong>`;
     document.getElementById('healthy-range-note').innerHTML = (showBand
         ? `<span class="swatch" aria-hidden="true"></span>הרצועה = טווח המשקל התקין לגובה שלך<br>${rangeTxt}`
@@ -1394,6 +1487,7 @@ function renderChartWeight(data) {
         },
         options: {
             responsive: true, maintainAspectRatio: false,
+            ...(rangeZoom ? { animation: false } : {}),   // במעבר טווח — הנפשת הזום במקום "צמיחה" מלמטה
             interaction: TOUCH_INTERACTION,
             onHover: autoHideTooltip,
             plugins: { legend: { display: false }, tooltip: { ...TOOLTIP_FADE,
@@ -1451,6 +1545,7 @@ function renderChartBMI(data) {
         },
         options: {
             responsive: true, maintainAspectRatio: false,
+            ...(rangeZoom ? { animation: false } : {}),   // במעבר טווח — הנפשת הזום במקום "צמיחה" מלמטה
             interaction: TOUCH_INTERACTION,
             onHover: autoHideTooltip,
             plugins: {
