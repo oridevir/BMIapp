@@ -1323,8 +1323,8 @@ window.addEventListener('resize', () => { if (!document.getElementById('range-ba
    (תאריכים ומשקל) נעים בהדרגה מהטווח הקודם לטווח החדש. בהתקרבות הקטע האחרון נמתח עד שהוא ממלא
    את הגרף; בהתרחקות ההיסטוריה נחשפת משמאל. בלי הנפשה למי שביקש במכשיר פחות תנועה */
 let rangeZoom = null;
-const ZOOM_MS = 900;
-const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+const ZOOM_MS = 1100;
+const easeOut = t => 1 - (1 - t) ** 3;   // מתחיל מהר ומאט לקראת הסוף — התנועה מורגשת מהרגע הראשון
 const axesOf = ch => ch && { x: [ch.scales.x.min, ch.scales.x.max], y: [ch.scales.y.min, ch.scales.y.max] };
 
 function zoomChart(ch, from) {
@@ -1333,11 +1333,17 @@ function zoomChart(ch, from) {
     const t0 = performance.now();
     const step = () => {
         if (ch !== chartWeight && ch !== chartBMI) return;          // הגרף הוחלף בינתיים
-        const k = easeInOut(Math.min(1, (performance.now() - t0) / ZOOM_MS));
-        const mix = (a, b) => a + (b - a) * k;
+        const k = easeOut(Math.min(1, (performance.now() - t0) / ZOOM_MS));
+        // רוחב הטווח משתנה פי יחס קבוע בכל רגע (ולא בימים/קילוגרמים קבועים) — כך ההגדלה מורגשת
+        // באותה עוצמה לאורך כל התנועה, במקום שרוב המתיחה תתרכז בסוף
+        const zoom = (a, b) => {
+            const sa = a[1] - a[0], sb = b[1] - b[0];
+            const r = sa === sb ? k : (sa * (sb / sa) ** k - sa) / (sb - sa);   // כמה מהדרך עברנו
+            return [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r];
+        };
         const sx = ch.options.scales.x, sy = ch.options.scales.y;
-        sx.min = mix(from.x[0], to.x[0]); sx.max = mix(from.x[1], to.x[1]);
-        sy.min = mix(from.y[0], to.y[0]); sy.max = mix(from.y[1], to.y[1]);
+        [sx.min, sx.max] = zoom(from.x, to.x);
+        [sy.min, sy.max] = zoom(from.y, to.y);
         sy.ticks.includeBounds = k >= 1;   // באמצע הזום — בלי מספרים "שבורים" (כמו 92.2) בקצות הציר
         ch.update('none');
         if (k < 1) requestAnimationFrame(step);
