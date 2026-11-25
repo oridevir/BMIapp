@@ -764,11 +764,6 @@ input::placeholder { color: var(--text2) !important; }
   border: 0; border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; white-space: nowrap; transition: color .2s .15s; }
 .range-btn[aria-pressed="true"] { color: #fff; }
 .range-btn:focus-visible { outline: 3px solid #0C7E76; outline-offset: 2px; }
-#hist-content .chart-wrap { overflow: hidden; }
-.chart-wrap.zoom-in  canvas { animation: chart-zoom-in  .45s cubic-bezier(.2,.8,.2,1) both; }
-.chart-wrap.zoom-out canvas { animation: chart-zoom-out .45s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes chart-zoom-in  { from { opacity: 0; transform: scale(.88); } to { opacity: 1; transform: none; } }
-@keyframes chart-zoom-out { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
 @media (max-width: 360px) { .range-btn { font-size: 14px; padding: 8px 3px; } }   /* טלפונים צרים — שכל חמשת הכפתורים ייכנסו
 
 /* ═══ About window (click on the clinic logo) ═══ */
@@ -1324,24 +1319,44 @@ function markRange() {
 }
 window.addEventListener('resize', () => { if (!document.getElementById('range-bar').hidden) markRange(); });
 
-/* מעבר בין טווחים: הגרפים "מתקרבים" (טווח קצר יותר) או "מתרחקים" (טווח ארוך יותר) —
-   הגרף החדש מופיע בדהייה, מוגדל מעט או מוקטן מעט, ומתייצב לגודלו */
+/* מעבר בין טווחים — "מצלמה" שמתקרבת או מתרחקת: הגרף החדש נבנה, ואז הצירים שלו
+   (תאריכים ומשקל) נעים בהדרגה מהטווח הקודם לטווח החדש. בהתקרבות הקטע האחרון נמתח עד שהוא ממלא
+   את הגרף; בהתרחקות ההיסטוריה נחשפת משמאל. בלי הנפשה למי שביקש במכשיר פחות תנועה */
 let rangeZoom = null;
-const rangeLen = d => d || Infinity;   // 0 = הכל = הכי ארוך
+const ZOOM_MS = 900;
+const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+const axesOf = ch => ch && { x: [ch.scales.x.min, ch.scales.x.max], y: [ch.scales.y.min, ch.scales.y.max] };
+
+function zoomChart(ch, from) {
+    if (!ch || !from) return;
+    const to = axesOf(ch);
+    const t0 = performance.now();
+    const step = () => {
+        if (ch !== chartWeight && ch !== chartBMI) return;          // הגרף הוחלף בינתיים
+        const k = easeInOut(Math.min(1, (performance.now() - t0) / ZOOM_MS));
+        const mix = (a, b) => a + (b - a) * k;
+        const sx = ch.options.scales.x, sy = ch.options.scales.y;
+        sx.min = mix(from.x[0], to.x[0]); sx.max = mix(from.x[1], to.x[1]);
+        sy.min = mix(from.y[0], to.y[0]); sy.max = mix(from.y[1], to.y[1]);
+        sy.ticks.includeBounds = k >= 1;   // באמצע הזום — בלי מספרים "שבורים" (כמו 92.2) בקצות הציר
+        ch.update('none');
+        if (k < 1) requestAnimationFrame(step);
+    };
+    step();
+}
+
 function setRange(days) {
     if (days === chartRange) return;
-    rangeZoom = rangeLen(days) < rangeLen(chartRange) ? 'zoom-in' : 'zoom-out';
     chartRange = days;
     try { appStore.setItem(LS_RANGE, String(days)); } catch (e) {}
     markRange();                              // הסליידר מתחיל לנוע מיד
+    const from = REDUCE_MOTION ? {} : { w: axesOf(chartWeight), b: axesOf(chartBMI) };
+    rangeZoom = !REDUCE_MOTION;
     requestAnimationFrame(() => {             // והגרפים מתעדכנים בפריים הבא
         renderHistory();
-        document.querySelectorAll('#hist-content .chart-wrap').forEach(w => {
-            w.classList.remove('zoom-in', 'zoom-out');
-            void w.offsetWidth;               // מאפס את ההנפשה כדי שתרוץ שוב
-            w.classList.add(rangeZoom);
-        });
         rangeZoom = null;
+        zoomChart(chartWeight, from.w);
+        zoomChart(chartBMI, from.b);
     });
 }
 
@@ -1417,9 +1432,12 @@ const onDates = (data, ys) => data.map((r, i) => ({ x: dayNum(r.dt), y: ys[i] })
 function timeAxis(data) {
     let min = dayNum(data[0].dt), max = dayNum(data[data.length - 1].dt);
     if (max - min < 1) { min -= 1; max += 1; }   // מדידה אחת (או כולן באותו יום) — שהנקודה לא תידבק לשוליים
-    const n = Math.min(6, Math.floor(max - min) + 1);   // עד 6 תאריכים, במרווחים שווים, בלי כפילויות
     return { type: 'linear', min, max,
-             afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: min + (max - min) * i / (n - 1) })); },
+             afterBuildTicks: ax => {   // עד 6 תאריכים, במרווחים שווים, בלי כפילויות — לפי הציר כפי שהוא ברגע זה (גם באמצע זום)
+                 const n = Math.min(6, Math.floor(ax.max - ax.min) + 1);
+                 ax.ticks = n < 2 ? [{ value: ax.min }]
+                          : Array.from({ length: n }, (_, i) => ({ value: ax.min + (ax.max - ax.min) * i / (n - 1) }));
+             },
              ticks: { font: { size: 11 }, maxRotation: 45, callback: dayLabel } };
 }
 const tooltipDate = data => items => formatDate(data[items[0].dataIndex].dt.split('T')[0]);
